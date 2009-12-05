@@ -3,3 +3,14 @@ a convenient Python object interface.  It supports creating and deleting
 albums, uploading and downloading images, and adjusting various attributes
 of the above.  It also includes a convenient command-line utility, smugtool,
 which implements a number of commands useful for managing photos.
+
+Building and Installing smugapi
+-------------------------------
+On an RPM based distro, building a smugapi RPM is a simple matter of
+running "make rpm", and then installing the resulting RPM.  For other
+users, you should be able to put smugapi.py wherever your python
+site-packages is located (typically something like
+/usr/lib/python2.6/site-packages), and then put smugtool in /usr/bin.
+If you don't have administrator rights on your machine (and hence can't
+write files to those directories), you can just use smugtool and smugapi
+in-place.
