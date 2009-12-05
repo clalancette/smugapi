@@ -1,0 +1,329 @@
+#!/usr/bin/python
+
+#
+# Copyright 2009, Chris Lalancette
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Library General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+import smugapi
+import sys
+import os
+import md5
+import getopt
+import EXIF
+import string
+import mimetypes
+
+def find_album_by_id(smug, id):
+    for album in smug.list_albums():
+        if album.get_id() == int(id):
+            return album
+    return None
+
+progress_file = None
+progress_count = None
+progress_total = None
+progress_direction = None
+def progress(down_total, down_current, up_total, up_current):
+    global progress_file
+    global progress_count
+    global progress_total
+    global progress_direction
+
+    if progress_direction == "Up":
+        curr = up_current
+        tot = up_total
+    else:
+        curr = down_current
+        tot = down_total
+    print '%sloading %s (%d of %d): %dkB of %dkB\r' % (progress_direction, progress_file, progress_count, progress_total, curr/1024, tot/1024),
+    sys.stdout.flush()
+def upload_one_file(album, file, count, total):
+    global progress_file
+    global progress_count
+    global progress_total
+    global progress_direction
+
+    progress_file = os.path.basename(file)
+    progress_count = count
+    progress_total = total
+    progress_direction = "Up"
+    album.upload_image_from_file(file, callback=progress)
+    print ""
+def download_one_file(image, file, count, total):
+    global progress_file
+    global progress_count
+    global progress_total
+    global progress_direction
+
+    progress_file = os.path.basename(file)
+    progress_count = count
+    progress_total = total
+    progress_direction = "Down"
+    f = open(file, 'w')
+    f.write(image.download_data(callback=progress))
+    f.close()
+    print ""
+
+def upload_to_album(albumid, *myfiles):
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    album = find_album_by_id(mysmug, albumid)
+    if album is None:
+        print "Could not find albumid %s" % albumid
+        mysmug.logout()
+        return
+    count = 1
+    for file in myfiles:
+        upload_one_file(album, file, count, len(myfiles))
+        count += 1
+    mysmug.logout()
+
+def download_album(albumid, destdir):
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    album = find_album_by_id(mysmug, albumid)
+    if album is None:
+        print "Could not find albumid %s" % albumid
+        mysmug.logout()
+        return
+    count = 1
+    images = album.list_images()
+    for image in images:
+        download_one_file(image, image.get_filename(), count, len(images))
+        count += 1
+    mysmug.logout()
+
+def create_album(albumname, category, public):
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    album = mysmug.create_album(albumname)
+    if category is not None:
+        album.set_category(category)
+    if not public:
+        album.set_public(False)
+    print "Created album %s with ID %d" % (albumname, album.get_id())
+    mysmug.logout()
+    return album
+
+def create_upload(albumname, category, public, *myfiles):
+    newalbum = create_album(albumname, category, public)
+    upload_to_album(newalbum.get_id(), *myfiles)
+
+def list_albums():
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    def cmpname(a, b):
+        return cmp(a.get_title(), b.get_title())
+    albums = mysmug.list_albums()
+    albums.sort(cmpname)
+    for album in albums:
+        print "%s: %s" % (album.get_title(), album.get_id())
+    mysmug.logout()
+
+class LocalFile:
+    def __init__(self, filename):
+        self.filename = filename
+        f = open(filename, 'r')
+        self.data = f.read()
+        self.md5sum = md5.new(self.data).hexdigest()
+        f.seek(0)
+        self.exif = EXIF.process_file(f)
+        f.close()
+
+    def matches(self, md5sum, make, model, date):
+        if self.md5sum == md5sum:
+            return True
+
+        if str(self.exif['Image Make']) == make and str(self.exif['Image Model']) == model and str(self.exif['EXIF DateTimeOriginal']) == date.translate(string.maketrans('-',':')):
+            return True
+
+        return False
+
+def synchronize_album(albumid, directory):
+    local = []
+    if os.access(directory, os.F_OK):
+        if not os.path.isdir(directory):
+            print "Destination %s exists, but is not a directory, aborting" % (directory)
+            return
+        print "Checking existing files, this may take some time ...",
+        sys.stdout.flush()
+        for file in os.listdir(directory):
+            fullname = os.path.join(directory, file)
+            if not os.path.isfile(fullname):
+                continue
+            # FIXME: I'm not sure if SmugMug handles formats that are not
+            # JPG, but if so, we should probably expand this
+            allowed = ['images/jpeg', 'images/gif']
+            if mimetypes.guesstype(fullname)[0] not in allowed:
+                continue
+            local.append(LocalFile(fullname))
+        print "done."
+    else:
+        os.makedirs(directory)
+
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    album = find_album_by_id(mysmug, albumid)
+    if album is None:
+        print "Could not find albumid %s" % albumid
+        mysmug.logout()
+        return
+    # first download pictures from SmugMug album that are not in the
+    # local directory
+    remote = []
+    download_list = {}
+    for image in album.list_images():
+        remote.append(image.get_md5sum())
+        exif = image.get_exif()
+        found = False
+        for localfile in local:
+            if localfile.matches(image.get_md5sum(), exif['Make'], exif['Model'], exif['DateTimeOriginal']):
+                print "File %s already exists locally, not downloading" % image.get_filename()
+                found = True
+                break
+
+        if found:
+            continue
+
+        # we have to be a bit careful here.  While checking the md5sum
+        # has ensured that we don't download a file that we already have
+        # locally, it does not prevent us from inadvertently overwriting
+        # some file that happens to have the same name.  For maximum
+        # safety, if that file exists, add a count to the filename until
+        # we find an unused filename
+        basename = image.get_filename()
+        if basename[-3:].lower() != "jpg":
+            basename += ".jpg"
+        fullname = os.path.join(directory, basename)
+        count = 1
+        while True:
+            if os.access(fullname, os.F_OK):
+                fullname = os.path.join(directory, str(count) + "-" + basename)
+                count += 1
+                continue
+            break
+
+        download_list[fullname] = image
+
+    count = 1
+    for name,image in download_list.items():
+        download_one_file(image, name, count, len(download_list))
+        count += 1
+
+    # then upload pictures that are in the local directory but not in the
+    # Smugmug album
+    upload_list = []
+    for localfile in local:
+        if localfile.md5sum in remote:
+            print "File %s already in SmugMug album, not uploading" % os.path.basename(localfile.filename)
+        else:
+            upload_list.append(file)
+
+    upload_to_album(album.get_id(), *upload_list)
+
+    mysmug.logout()
+
+# FIXME: I should make this more dynamic, and allow the user to pass in
+# desired fields
+def get_album_info(albumid):
+    mysmug = smugapi.SmugMug(username, password)
+    mysmug.login()
+    album = find_album_by_id(mysmug, albumid)
+    if album is None:
+        print "Could not find albumid %s" % albumid
+        mysmug.logout()
+        return
+    print "Album: %s" % albumid
+    print "\tTitle:\t\t\t%s" % album.get_title()
+    print "\tNumber of Pictures:\t%s" % album.get_imagecount()
+    mysmug.logout()
+
+def usage():
+    print "Usage: %s [--login=username] [--password=password] <command> [options]" % sys.argv[0]
+    sys.exit(1)
+
+# main
+try:
+    opts, args = getopt.gnu_getopt(sys.argv[1:], 'cdhl:p:', ['login=', 'password=', 'help', 'category=', 'hidden'])
+except getopt.GetoptError, err:
+    print str(err)
+    usage()
+
+username = None
+password = None
+category = None
+public = True
+for o, a in opts:
+    if o in ("-l", "--login"):
+        username = a
+    elif o in ("-p", "--password"):
+        password = a
+    elif o in ("-h", "--help"):
+        usage()
+    elif o in ("-c", "--category"):
+        category = a
+    elif o in ("-d", "--hidden"):
+        public = False
+    else:
+        assert False, "unhandled option"
+
+if username is None or password is None:
+    print "--login and --password are required"
+    sys.exit(2)
+
+if len(args) < 1:
+    usage()
+
+command = args[0]
+if command == "create_and_upload_album":
+    if len(args) < 3:
+        print "Usage: %s create_and_upload_album <albumname> <file1> [<file2> ...]" % sys.argv[0]
+        sys.exit(3)
+    create_upload(args[1], category, public, *args[2:])
+elif command == "create_album":
+    if len(args) != 2:
+        print "Usage: %s create_album <albumname>" % sys.argv[0]
+        sys.exit(4)
+    create_album(args[1], category, public)
+elif command == "list_albums":
+    if len(args) != 1:
+        print "Usage: %s list_albums" % sys.argv[0]
+        sys.exit(4)
+    list_albums()
+elif command == "upload_to_album":
+    if len(args) < 3:
+        print "Usage: %s upload_to_album <albumid> <file1> [<file2> ...]" % sys.argv[0]
+        sys.exit(5)
+    upload_to_album(args[1], *args[2:])
+elif command == "download_album":
+    if len(args) != 3:
+        print "Usage: %s download_album <albumid> <destdir>" % sys.argv[0]
+        sys.exit(6)
+    download_album(args[1], args[2])
+elif command == "synchronize_album":
+    if len(args) != 3:
+        print "Usage: %s synchronize_album <albumid> <destdir>" % sys.argv[0]
+        sys.exit(8)
+    synchronize_album(args[1], args[2])
+elif command == "get_album_info":
+    if len(args) != 2:
+        print "Usage: %s get_album_info <albumid>" % sys.argv[0]
+        sys.exit(7)
+    get_album_info(args[1])
+else:
+    print "Invalid command %s" % command
+    sys.exit(2)
+
+sys.exit(0)

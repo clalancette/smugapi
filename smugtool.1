@@ -1,0 +1,51 @@
+.TH SMUGTOOL 1 "July 2009" "Smugtool"
+
+.SH NAME
+smugtool - SmugMug upload/download tool
+
+.SH SYNOPSIS
+.B smugtool --login=username --password=password <command> [OPTIONS]
+
+.SH DESCRIPTION
+This is a tool to manage SmugMug albums and images.  Each command has it's
+own options and syntax, which is described in the COMMANDS section.
+
+.SH OPTIONS
+.TP
+.B "\-h"
+Print a short help message.
+.TP
+.BR "\--login=username"
+Use username \fBusername\fR to log into SmugMug.  Note that this is a
+required option.
+.TP
+.BR "\--password=password"
+Use password \fBpassword\fR to log into SmugMug.  Note that this is a
+required option.
+.TP
+.BR "\--category=category"
+Set the SmugMug album category to \fBcategory\fR.  Note that this only has
+an effect on the create_album and create_and_upload_album commands.
+
+.SH COMMANDS
+.IP "\fBlist_albums\fR"
+This command lists all of the available album titles and album IDs for the
+current user.  The album IDs are particularly useful, since most of the other
+commands require an album ID to operate on.
+.IP "\fBcreate_album\fR \fIalbumname\fR"
+This command creates a new album called \fIalbumname\fR.  On successful
+completion, it prints out the ID of the new created album.
+.IP "\fBcreate_and_upload_album\fR \fIalbumname\fR \fIfile1\fR [\fIfile2 ...\fR]"
+This command creates a new album called \fIalbumname\fR, and then uploads one
+or more files to that album.
+.IP "\fBupload_to_album\fR \fIalbumid\fR \fIfile1\fR [\fIfile2 ...\fR]"
+This command uploads one or more files into the album referenced by
+\fIalbumid\fR.
+.IP "\fBdownload_album\fR \fIalbumid\fR \fIdestdir\fR"
+This command downloads all of the pictures from the album referenced by
+\fIalbumid\fR into destination directory \fIdestdir\fR.  Note that this does
+no checking to see if the destination file already exists, so it can overwrite
+local data if the filenames happen to be the same.
+
+.SH AUTHOR
+Chris Lalancette <clalancette@gmail.com>

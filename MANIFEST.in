@@ -1,0 +1,6 @@
+include README COPYING
+include smugapi.spec
+include setup.py
+include smugtool
+include smugapi.py
+include smugtool.1

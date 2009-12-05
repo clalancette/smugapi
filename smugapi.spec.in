@@ -1,0 +1,56 @@
+%{!?python_sitelib: %define python_sitelib %(python -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
+
+%if 0%{?fedora} >= 9
+%define with_egg 1
+%else
+%define with_egg 0
+%endif
+
+Name:		smugapi
+Version:	@VERSION@
+Release:	1%{?dist}
+Summary:	Python API and utility for accessing SmugMug
+
+Group:		Development/Libraries
+License:	GPL
+URL:		http://github.com/smugapi/smugapi/tree/master
+Source0:	smugapi-%{version}.tar.gz
+BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+
+BuildRequires:	python
+Requires:	python-pycurl >= 7.12
+
+%description
+SmugAPI is a python module for accessing SmugMug data.  It has API's for
+uploading, downloading, and manipulating SmugMug pictures, albums, and
+categories, all in a convenient python object oriented way.  It also
+includes a command-line utility (smugtool) to perform common operations.
+
+%prep
+%setup -q -n smugapi-%{version}
+
+%build
+python setup.py build
+
+%install
+rm -rf $RPM_BUILD_ROOT
+python setup.py install -O1 --root=$RPM_BUILD_ROOT
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root,-)
+%doc README COPYING
+%{python_sitelib}/smugapi.py
+%{python_sitelib}/smugapi.pyc
+%{python_sitelib}/smugapi.pyo
+%{_bindir}/smugtool
+%if %{with_egg}
+%{python_sitelib}/%{name}-*.egg-info
+%endif
+%{_mandir}/man1/smugtool.*
+
+%changelog
+* Thu Jul 9 2009 Chris Lalancette <clalancette@gmail.com> - 1.0-1
+- Initial packaging of smugapi

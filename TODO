@@ -1,0 +1,14 @@
+TODO list:
+1)  More tests in the unittest
+2)  Find out what's going on with album.set_position(), and make it work
+3)  Find out what the heck an album "HighlightID" is, and implement it properly
+4)  Fix failing unit tests
+5)  .deb for Ubuntu/Debian
+6)  Test on Windows
+7)  Implement a "set_{album,image}_attributes", that accepts a dictionary and
+    will set multiple name=value pairs for the requested album or image at a
+    time.  It's more complex, but it should be faster than setting one at a
+    time.
+8)  Unit test for Captions, Keywords, etc with spaces in them.
+9)  Expand the README to include installation instructions (distutils, rpm).
+10) Expand the man page to include some example code.

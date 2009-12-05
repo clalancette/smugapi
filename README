@@ -1,0 +1,5 @@
+smugapi is a python module to allow access to SmugMug API's through
+a convenient Python object interface.  It supports creating and deleting
+albums, uploading and downloading images, and adjusting various attributes
+of the above.  It also includes a convenient command-line utility, smugtool,
+which implements a number of commands useful for managing photos.
